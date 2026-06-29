@@ -19,13 +19,30 @@ func main() {
 
 func (r *record) serialize() []byte {
 
-	// i need to chnage this so it will not exceeds 32KB
+	// i need to chnage this so it will not exceeds 32KB -> 32000 bytes
+	if len(r.payload) >= 31993 {
+
+		numRecords := len(r.payload) / 31993
+
+		for num := 0; num < numRecords; num++ {
+			
+		}
+	} else {
+
+		return r.serializeRecord()
+	}
+	
+}
+
+func (r *record) serializeRecord() []byte {
+
 	totalSize := 7 + len(r.payload)
 	buf := make([]byte, totalSize)
 
 	binary.LittleEndian.PutUint32(buf[0:4], r.checkSum)
 	buf[4] = r.logType
-	binary.LittleEndian.PutUint16(buf[5:9], r.lenght)
+	binary.LittleEndian.PutUint16(buf[5:7], r.lenght)
+	copy(buf[7:], r.payload)
 
-	
+	return buf
 }
