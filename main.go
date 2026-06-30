@@ -11,30 +11,62 @@ type record struct{
 	lenght uint16	// 2 bytes	- how many bytes is the payload
 	payload []byte  // operation -> keyLength -> key -> value
 }
+// i need to add an identifier for type
 
 func main() {
 
 	
 }
 
+const blockSize = 32 * 1024
+const headerSize = 7
+const maxPayloadSize = blockSize - headerSize
+
 func (r *record) serialize() []byte {
 
-	// i need to chnage this so it will not exceeds 32KB -> 32000 bytes
-	if len(r.payload) >= 31993 {
-
-		numRecords := len(r.payload) / 31993
-
-		for num := 0; num < numRecords; num++ {
-			
-		}
-	} else {
-
-		return r.serializeRecord()
+	// i need to chnage this so it will not exceeds 32KB -> 32768 bytes
+	if len(r.payload) <= maxPayloadSize {
+		// r.checkSum = ,
+		r.lenght = uint16(len(r.payload))
+		r.logType = 1 // full
+		return serializeRecord(*r)
 	}
-	
+
+	var out []byte
+
+	num := 0
+	for num < len(r.payload) {
+
+		end := num + maxPayloadSize
+		if end > len(r.payload) {
+			end = len(r.payload)
+		}
+
+		var typeRecord byte
+		switch {
+		case num == 0:
+			typeRecord = 2 // start
+		case num == len(r.payload):
+			typeRecord = 4 // end
+		default:
+			typeRecord = 3 // middle
+		}
+
+		payloadPart := r.payload[num:end]
+
+		recordPart := record{
+			// checkSum: ,
+			logType: typeRecord,
+			lenght: uint16(len(payloadPart)),
+			payload: payloadPart,
+		}
+		out = append(out, serializeRecord(recordPart)...)
+		num = end
+	}
+	return out
 }
 
-func (r *record) serializeRecord() []byte {
+func serializeRecord(r record) []byte {
 
 	totalSize := 7 + len(r.payload)
 	buf := make([]byte, totalSize)
