@@ -4,6 +4,15 @@ import (
 	"encoding/binary"
 )
 
+type logType int
+
+const (
+	full logType = iota
+	start
+	middle
+	end
+)
+
 // block size 32KB
 type record struct{
 	checkSum uint32	// 4 bytes	- fingerprint of the payload
@@ -25,10 +34,11 @@ const maxPayloadSize = blockSize - headerSize
 func (r *record) serialize() []byte {
 
 	// i need to chnage this so it will not exceeds 32KB -> 32768 bytes
+
 	if len(r.payload) <= maxPayloadSize {
 		// r.checkSum = ,
 		r.lenght = uint16(len(r.payload))
-		r.logType = 1 // full
+		r.logType = uint8(full) // full
 		return serializeRecord(*r)
 	}
 
@@ -45,11 +55,11 @@ func (r *record) serialize() []byte {
 		var typeRecord byte
 		switch {
 		case num == 0:
-			typeRecord = 2 // start
-		case num == len(r.payload):
-			typeRecord = 4 // end
+			typeRecord = byte(start) // start
+		case end == len(r.payload):
+			typeRecord = byte(end) // end
 		default:
-			typeRecord = 3 // middle
+			typeRecord = byte(middle) // middle
 		}
 
 		payloadPart := r.payload[num:end]
