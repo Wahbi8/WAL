@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"hash/crc32"
 )
 
 type logType int
@@ -36,7 +37,7 @@ func (r *record) serialize() []byte {
 	// i need to chnage this so it will not exceeds 32KB -> 32768 bytes
 
 	if len(r.payload) <= maxPayloadSize {
-		// r.checkSum = ,
+		r.checkSum = crc32.ChecksumIEEE(r.payload)
 		r.lenght = uint16(len(r.payload))
 		r.logType = uint8(full) // full
 		return serializeRecord(*r)
