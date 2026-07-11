@@ -22,6 +22,10 @@ type record struct{
 	payload []byte  // operation -> keyLength -> key -> value
 }
 // i need to add an identifier for type
+operation | keyLength | valueLength | key | value 
+type payload struct{
+	
+}
 
 func main() {
 
@@ -89,3 +93,20 @@ func serializeRecord(r record) []byte {
 
 	return buf
 }
+
+func deserializeHeader(bytes []byte) record {
+
+	return record{
+		checkSum: binary.LittleEndian.Uint32(bytes[0:4]),
+		logType: bytes[4],
+		lenght: binary.LittleEndian.Uint16(bytes[5:7]),
+	}
+}
+
+func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
+
+	payloadChechSum := crc32.ChecksumIEEE(payload)
+	return headerCheckSum == payloadChechSum
+}
+
+// read paylowd
