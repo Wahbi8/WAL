@@ -20,11 +20,16 @@ type record struct{
 	logType uint8	// 1 byte	- type is (full / start / middle / last) aa a number
 	lenght uint16	// 2 bytes	- how many bytes is the payload
 	payload []byte  // operation -> keyLength -> key -> value
+
+	payloadStruct payload
 }
 // i need to add an identifier for type
-operation | keyLength | valueLength | key | value 
 type payload struct{
-	
+	operation 	uint8
+	keyLength	uint16
+	valueLength	uint16
+	key			[]byte
+	value		[]byte
 }
 
 func main() {
@@ -100,6 +105,11 @@ func deserializeHeader(bytes []byte) record {
 		checkSum: binary.LittleEndian.Uint32(bytes[0:4]),
 		logType: bytes[4],
 		lenght: binary.LittleEndian.Uint16(bytes[5:7]),
+		payloadStruct: payload{
+			operation: bytes[7],
+			keyLength: binary.LittleEndian.Uint16(bytes[8:10]),
+			valueLength: binary.LittleEndian.Uint16(bytes[10:12]),
+		},
 	}
 }
 
@@ -109,4 +119,4 @@ func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
 	return headerCheckSum == payloadChechSum
 }
 
-// read paylowd
+// implement fragment reassembly (first, middle, last)
