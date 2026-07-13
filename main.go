@@ -120,3 +120,21 @@ func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
 }
 
 // implement fragment reassembly (first, middle, last)
+// i'll need a struct that will hold the record content temporarily 
+// i need gloo the the parts and return record
+// i need to use the lengths to know where the key ends
+func fragmentAssembly(r record) record {
+
+	switch{
+	case r.logType == uint8(full):
+		return r
+	case r.logType == uint8(start):
+		// to do
+	case r.logType == uint8(middle):
+		// todo
+	case r.logType == uint8(end):
+		// todo
+	}
+
+
+}
