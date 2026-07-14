@@ -16,6 +16,7 @@ const (
 
 // block size 32KB
 type record struct{
+	// i need to add recorsId
 	checkSum uint32	// 4 bytes	- fingerprint of the payload
 	logType uint8	// 1 byte	- type is (full / start / middle / last) aa a number
 	lenght uint16	// 2 bytes	- how many bytes is the payload
@@ -31,6 +32,11 @@ type payload struct{
 	key			[]byte
 	value		[]byte
 }
+
+type FragmentReassembler struct {
+    buffers map[uint64][]byte 
+}
+
 
 func main() {
 
@@ -123,7 +129,8 @@ func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
 // i'll need a struct that will hold the record content temporarily 
 // i need gloo the the parts and return record
 // i need to use the lengths to know where the key ends
-func fragmentAssembly(r record) record {
+// fr is a buffer
+func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 
 	switch{
 	case r.logType == uint8(full):
