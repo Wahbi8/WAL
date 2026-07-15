@@ -16,11 +16,11 @@ const (
 
 // block size 32KB
 type record struct{
-	// i need to add recorsId
-	checkSum uint32	// 4 bytes	- fingerprint of the payload
-	logType uint8	// 1 byte	- type is (full / start / middle / last) aa a number
-	lenght uint16	// 2 bytes	- how many bytes is the payload
-	payload []byte  // operation -> keyLength -> key -> value
+	recordId 	uint16
+	checkSum 	uint32	// 4 bytes	- fingerprint of the payload
+	logType 	uint8	// 1 byte	- type is (full / start / middle / last) aa a number
+	lenght 		uint16	// 2 bytes	- how many bytes is the payload
+	payload 	[]byte  // operation -> keyLength -> key -> value
 
 	payloadStruct payload
 }
@@ -34,9 +34,14 @@ type payload struct{
 }
 
 type FragmentReassembler struct {
-    buffers map[uint64][]byte 
+    buffers map[uint16]*tempRecord 
 }
 
+type tempRecord struct {
+	// expectedLen uint32
+	// recievedLen uint32
+	data []byte
+}
 
 func main() {
 
@@ -130,16 +135,19 @@ func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
 // i need gloo the the parts and return record
 // i need to use the lengths to know where the key ends
 // fr is a buffer
-func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
+func (fr *FragmentReassembler) Assemble(r record) (record, error) {
 
-	switch{
-	case r.logType == uint8(full):
-		return r
-	case r.logType == uint8(start):
-		// to do
-	case r.logType == uint8(middle):
+	switch r.logType {
+	case uint8(full):
+		return r, nil
+	case uint8(start):
+		fr.buffers[r.recordId] = &tempRecord{
+			data: append([]byte(nil), r.payload...),
+		}
+		return r, nil
+	case uint8(middle):
 		// todo
-	case r.logType == uint8(end):
+	case uint8(end):
 		// todo
 	}
 
