@@ -135,21 +135,34 @@ func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
 // i need gloo the the parts and return record
 // i need to use the lengths to know where the key ends
 // fr is a buffer
-func (fr *FragmentReassembler) Assemble(r record) (record, error) {
+func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 
 	switch r.logType {
 	case uint8(full):
-		return r, nil
+		return r, true
 	case uint8(start):
 		fr.buffers[r.recordId] = &tempRecord{
 			data: append([]byte(nil), r.payload...),
 		}
-		return r, nil
+		return r, false
 	case uint8(middle):
-		// todo
+		if d, ok := fr.buffers[r.recordId]; ok {
+			d.data = append(d.data, r.payload...)
+		}  
+		return  r, false
 	case uint8(end):
-		// todo
+		if d, ok := fr.buffers[r.recordId]; ok {
+			d.data = append(d.data, r.payload...)
+			
+			return parseRecord(d.data), true
+		}
+		return record{}, false
 	}
+
+	return record{}, false
+}
+
+func parseRecord(data []byte) record {
 
 
 }
