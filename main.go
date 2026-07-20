@@ -28,7 +28,7 @@ type record struct{
 type payload struct{
 	operation 	uint8
 	keyLength	uint16
-	valueLength	uint16
+	valueLength	uint32
 	key			[]byte
 	value		[]byte
 }
@@ -119,7 +119,7 @@ func deserializeHeader(bytes []byte) record {
 		payloadStruct: payload{
 			operation: bytes[7],
 			keyLength: binary.LittleEndian.Uint16(bytes[8:10]),
-			valueLength: binary.LittleEndian.Uint16(bytes[10:12]),
+			valueLength: binary.LittleEndian.Uint32(bytes[10:14]),
 		},
 	}
 }
@@ -164,5 +164,14 @@ func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 
 func parseRecord(data []byte) record {
 
+	operation := logType(data[0])
+	data = data[1:]
 
+	kLength := binary.LittleEndian.Uint16(data[1:3])
+	data = data[3:]
+
+	vLength := binary.LittleEndian.Uint32(data[3:7])
+	data = data[7:]
+
+	
 }
