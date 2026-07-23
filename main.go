@@ -58,7 +58,7 @@ func (r *record) serialize() []byte {
 
 	if len(r.payload) <= maxPayloadSize {
 		r.checkSum = crc32.ChecksumIEEE(r.payload)
-		r.lenght = uint32(len(r.payload))
+		r.length = uint32(len(r.payload))
 		r.logType = uint8(full) // full
 		return serializeRecord(*r)
 	}
@@ -88,7 +88,7 @@ func (r *record) serialize() []byte {
 		recordPart := record{
 			// checkSum: ,
 			logType: typeRecord,
-			lenght: uint32(len(payloadPart)),
+			length: uint32(len(payloadPart)),
 			payload: payloadPart,
 		}
 		out = append(out, serializeRecord(recordPart)...)
@@ -104,7 +104,7 @@ func serializeRecord(r record) []byte {
 
 	binary.LittleEndian.PutUint32(buf[0:4], r.checkSum)
 	buf[4] = r.logType
-	binary.LittleEndian.PutUint32(buf[5:9], r.lenght)
+	binary.LittleEndian.PutUint32(buf[5:9], r.length)
 	copy(buf[9:], r.payload)
 
 	return buf
@@ -115,7 +115,7 @@ func deserializeHeader(bytes []byte) record {
 	return record{
 		checkSum: binary.LittleEndian.Uint32(bytes[0:4]),
 		logType: bytes[4],
-		lenght: binary.LittleEndian.Uint32(bytes[5:9]),
+		length: binary.LittleEndian.Uint32(bytes[5:9]),
 		payloadStruct: payload{
 			operation: bytes[9],
 			keyLength: binary.LittleEndian.Uint16(bytes[9:11]),
@@ -162,7 +162,7 @@ func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 	return record{}, false
 }
 
-// code below have some bugs 'need to be fixed'
+// code below have some bugs 'needs to be fixed'
 func parseRecord(data []byte, r record) record {
 
 	operation := logType(data[0])
@@ -181,8 +181,9 @@ func parseRecord(data []byte, r record) record {
 	data = data[vLength:]
 
 	for len(data) > 0 {
-		data = data[1:]		// pop operation byte[0]
-		data = data[2:]		// pop key byte[0:2]
+		data = data[1:]			// pop operation byte[0]
+		data = data[2:]			// pop key byte[0:2]
+		data = data[kLength:]	// pop key value
 
 		tmpVLength := binary.LittleEndian.Uint32(data[0:4])
 		data = data[4:]
@@ -191,12 +192,21 @@ func parseRecord(data []byte, r record) record {
 		data = data[tmpVLength:]
 	}
 
+	vl := len(vValue)
+	var pl []byte
+
+	pl = append(pl, byte(operation))
+	pl = binary.LittleEndian.AppendUint16(pl, kLength)		// to insure 2 bytes even if it is smaller
+	pl = binary.LittleEndian.AppendUint32(pl, uint32(vl))	// to insure 4 bytes
+	pl = append(pl, kValue...)
+	pl = append(pl, vValue...)
+
 	return record{
 		recordId: r.recordId,
 		checkSum: r.checkSum,
 		logType: uint8(full),
-		length: uint32(7 + len(kValue) + len(vValue)), // 7 is the bytes before the k & v
-		payload: ,
+		length: uint32(7 + len(kValue) + len(vValue)), // 7 is the header bytes (op + klen + vlen)
+		payload: pl,
 
 	}
 }
