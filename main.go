@@ -183,10 +183,11 @@ func parseRecord(data []byte, r record) record {
 	for len(data) > 0 {
 		data = data[1:]			// pop operation byte[0]
 		data = data[2:]			// pop key byte[0:2]
-		data = data[kLength:]	// pop key value
 
 		tmpVLength := binary.LittleEndian.Uint32(data[0:4])
 		data = data[4:]
+
+		data = data[kLength:]	// pop key value
 
 		vValue = append(vValue, data[0:tmpVLength]...)
 		data = data[tmpVLength:]
