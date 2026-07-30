@@ -56,11 +56,13 @@ func (r *record) serialize() []byte {
 
 	// i need to chnage this so it will not exceeds 32KB -> 32768 bytes
 
+	// add recordId by reading the last record id + 1 or 1 if there is none
+
 	if len(r.payload) <= maxPayloadSize {
 		r.checkSum = crc32.ChecksumIEEE(r.payload)
 		r.length = uint32(len(r.payload))
 		r.logType = uint8(full) // full
-		return serializeRecord(*r)
+		return serializeRecord(*r) // i need to store in disk
 	}
 
 	var out []byte
@@ -68,16 +70,16 @@ func (r *record) serialize() []byte {
 	num := 0
 	for num < len(r.payload) {
 
-		end := num + maxPayloadSize
-		if end > len(r.payload) {
-			end = len(r.payload)
+		endPayload := num + maxPayloadSize
+		if endPayload > len(r.payload) {
+			endPayload = len(r.payload)
 		}
 
 		var typeRecord byte
 		switch {
 		case num == 0:
 			typeRecord = byte(start) // start
-		case end == len(r.payload):
+		case endPayload == len(r.payload):
 			typeRecord = byte(end) // end
 		default:
 			typeRecord = byte(middle) // middle
@@ -91,15 +93,15 @@ func (r *record) serialize() []byte {
 			length: uint32(len(payloadPart)),
 			payload: payloadPart,
 		}
-		out = append(out, serializeRecord(recordPart)...)
-		num = end
+		out = append(out, serializeRecord(recordPart)...) // instead of this i need to store the record in disk
+		num = endPayload
 	}
 	return out
 }
 
 func serializeRecord(r record) []byte {
 
-	totalSize := 7 + len(r.payload)
+	totalSize := headerSize + len(r.payload)
 	buf := make([]byte, totalSize)
 
 	binary.LittleEndian.PutUint32(buf[0:4], r.checkSum)
