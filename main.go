@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"hash/crc32"
+	"os"
 )
 
 type logType int
@@ -43,6 +44,11 @@ type tempRecord struct {
 	data []byte
 }
 
+type Store struct {
+	file *os.File
+	lastRecordId uint32
+}
+
 func main() {
 
 	
@@ -51,6 +57,24 @@ func main() {
 const blockSize = 32 * 1024
 const headerSize = 11
 const maxPayloadSize = blockSize - headerSize
+
+func OpenFile(path string) (*Store, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// todo: read last record id
+	return &Store{file: f}, nil
+}
+
+func (s *Store) writeRecord(data []byte) error {
+
+	if _, err := s.file.Write(data); err != nil {
+		return err
+	}
+	return nil
+}
 
 func (r *record) serialize() []byte {
 
@@ -85,7 +109,7 @@ func (r *record) serialize() []byte {
 			typeRecord = byte(middle) // middle
 		}
 
-		payloadPart := r.payload[num:end]
+		payloadPart := r.payload[num:endPayload]
 
 		recordPart := record{
 			// checkSum: ,
