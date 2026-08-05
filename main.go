@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"os"
 )
@@ -21,17 +22,7 @@ type record struct{
 	checkSum 	uint32	// 4 bytes	- fingerprint of the payload
 	logType 	uint8	// 1 byte	- type is (full / start / middle / last) aa a number
 	length		uint32	// 4 bytes	- how many bytes is the payload
-	payload 	[]byte  // operation -> keyLength -> key -> value
-
-	payloadStruct payload
-}
-// i need to add an identifier for type
-type payload struct{
-	operation 	uint8
-	keyLength	uint16
-	valueLength	uint32
-	key			[]byte
-	value		[]byte
+	payload 	[]byte  // operation -> keyLength -> valueLength -> key -> value
 }
 
 type FragmentReassembler struct {
@@ -39,6 +30,7 @@ type FragmentReassembler struct {
 }
 
 type tempRecord struct {
+	checkSum uint32
 	// expectedLen uint32
 	// recievedLen uint32
 	data []byte
@@ -66,14 +58,6 @@ func OpenFile(path string) (*Store, error) {
 
 	// todo: read last record id
 	return &Store{file: f}, nil
-}
-
-func (s *Store) writeRecord(data []byte) error {
-
-	if _, err := s.file.Write(data); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Store) nextId() uint16 {
@@ -120,9 +104,14 @@ func (s *Store) serialize(payload []byte) error {
 
 		chunk := payload[num:endPayload]
 
+		checkSum := crc32.ChecksumIEEE(chunk)
+		if typeRecord == byte(start) {
+			checkSum = crc32.ChecksumIEEE(payload)
+		}
+
 		r := record{
 			recordId: globalRecordId,
-			checkSum: crc32.ChecksumIEEE(chunk),
+			checkSum: checkSum,
 			logType:  typeRecord,
 			length:   uint32(len(chunk)),
 			payload:  chunk,
@@ -154,19 +143,17 @@ func (s *Store) serializeRecord(r record) error {
 	return nil
 }
 
-func deserializeHeader(bytes []byte) record {
+func deserializeHeader(bytes []byte) (record, error) {
+	if len(bytes) < headerSize {
+		return record{}, errors.New("header too short")
+	}
 
 	return record{
 		recordId: binary.LittleEndian.Uint16(bytes[0:2]),
 		checkSum: binary.LittleEndian.Uint32(bytes[2:6]),
-		logType: bytes[6],
-		length: binary.LittleEndian.Uint32(bytes[7:11]),
-		payloadStruct: payload{
-			operation: bytes[11],
-			keyLength: binary.LittleEndian.Uint16(bytes[12:14]),
-			valueLength: binary.LittleEndian.Uint32(bytes[14:18]),
-		},
-	}
+		logType:  bytes[6],
+		length:   binary.LittleEndian.Uint32(bytes[7:11]),
+	}, nil
 }
 
 func compareCheckSum(headerCheckSum uint32, payload []byte) bool {
@@ -184,22 +171,38 @@ func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 
 	switch r.logType {
 	case uint8(full):
+		if !compareCheckSum(r.checkSum, r.payload) {
+			return record{}, false
+		}
 		return r, true
 	case uint8(start):
 		fr.buffers[r.recordId] = &tempRecord{
-			data: append([]byte(nil), r.payload...),
+			checkSum: r.checkSum,
+			data:     append([]byte(nil), r.payload...),
 		}
 		return r, false
 	case uint8(middle):
 		if d, ok := fr.buffers[r.recordId]; ok {
+			if !compareCheckSum(r.checkSum, r.payload) {
+				return record{}, false
+			}
 			d.data = append(d.data, r.payload...)
-		}  
-		return  r, false
+		}
+		return r, false
 	case uint8(end):
 		if d, ok := fr.buffers[r.recordId]; ok {
+			if !compareCheckSum(r.checkSum, r.payload) {
+				delete(fr.buffers, r.recordId)
+				return record{}, false
+			}
 			d.data = append(d.data, r.payload...)
-			// i need to empty the buffer 'fr'
-			return parseRecord(d.data, r), true
+			delete(fr.buffers, r.recordId)
+
+			if !compareCheckSum(d.checkSum, d.data) {
+				return record{}, false
+			}
+
+			return parseRecord(d.data, r)
 		}
 		return record{}, false
 	}
@@ -207,7 +210,10 @@ func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 	return record{}, false
 }
 
-func parseRecord(data []byte, r record) record {
+func parseRecord(data []byte, r record) (record, bool) {
+	if len(data) < 7 {
+		return record{}, false
+	}
 
 	operation := logType(data[0])
 	data = data[1:]
@@ -218,6 +224,10 @@ func parseRecord(data []byte, r record) record {
 	vLength := binary.LittleEndian.Uint32(data[0:4])
 	data = data[4:]
 
+	if len(data) < int(kLength)+int(vLength) {
+		return record{}, false
+	}
+
 	kValue := data[0:kLength]
 	data = data[kLength:]
 
@@ -226,6 +236,9 @@ func parseRecord(data []byte, r record) record {
 
 	// planning to have one key per record. (code stays untill i change my mind)
 	for len(data) > 0 {
+		if len(data) < 7 {
+			return record{}, false
+		}
 		data = data[1:]			// pop operation byte[0]
 		
 		tempKLength := binary.LittleEndian.Uint16(data[0:2])
@@ -233,6 +246,10 @@ func parseRecord(data []byte, r record) record {
 
 		tmpVLength := binary.LittleEndian.Uint32(data[0:4])
 		data = data[4:]
+
+		if len(data) < int(tempKLength)+int(tmpVLength) {
+			return record{}, false
+		}
 
 		data = data[tempKLength:]	// pop key value
 
@@ -256,5 +273,5 @@ func parseRecord(data []byte, r record) record {
 		length: uint32(7 + len(kValue) + len(vValue)), // 7 is the header bytes (op + klen + vlen)
 		payload: pl,
 
-	}
+	}, true
 }
