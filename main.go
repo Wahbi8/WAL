@@ -46,7 +46,7 @@ type tempRecord struct {
 
 type Store struct {
 	file *os.File
-	lastRecordId uint32
+	lastRecordId uint16
 }
 
 func main() {
@@ -76,76 +76,95 @@ func (s *Store) writeRecord(data []byte) error {
 	return nil
 }
 
-func (r *record) serialize() []byte {
+func (s *Store) nextId() uint16 {
+	s.lastRecordId++
+	return s.lastRecordId
+}
+ 
+func (s *Store) serialize(payload []byte) error {
 
 	// i need to chnage this so it will not exceeds 32KB -> 32768 bytes
 
 	// add recordId by reading the last record id + 1 or 1 if there is none
 
-	if len(r.payload) <= maxPayloadSize {
-		r.checkSum = crc32.ChecksumIEEE(r.payload)
-		r.length = uint32(len(r.payload))
-		r.logType = uint8(full) // full
-		return serializeRecord(*r) // i need to store in disk
+	if len(payload) <= maxPayloadSize {
+		r := record{
+			recordId: s.nextId(),
+			checkSum: crc32.ChecksumIEEE(payload),
+			logType:  uint8(full),
+			length:   uint32(len(payload)),
+			payload:  payload,
+		}
+		return s.serializeRecord(r) // i need to store in disk
 	}
 
-	var out []byte
-
 	num := 0
-	for num < len(r.payload) {
+	globalRecordId := s.nextId()
+
+	for num < len(payload) {
 
 		endPayload := num + maxPayloadSize
-		if endPayload > len(r.payload) {
-			endPayload = len(r.payload)
+		if endPayload > len(payload) {
+			endPayload = len(payload)
 		}
 
 		var typeRecord byte
 		switch {
 		case num == 0:
 			typeRecord = byte(start) // start
-		case endPayload == len(r.payload):
+		case endPayload == len(payload):
 			typeRecord = byte(end) // end
 		default:
 			typeRecord = byte(middle) // middle
 		}
 
-		payloadPart := r.payload[num:endPayload]
+		chunk := payload[num:endPayload]
 
-		recordPart := record{
-			// checkSum: ,
-			logType: typeRecord,
-			length: uint32(len(payloadPart)),
-			payload: payloadPart,
+		r := record{
+			recordId: globalRecordId,
+			checkSum: crc32.ChecksumIEEE(chunk),
+			logType:  typeRecord,
+			length:   uint32(len(chunk)),
+			payload:  chunk,
 		}
-		out = append(out, serializeRecord(recordPart)...) // instead of this i need to store the record in disk
+
+		if err := s.serializeRecord(r); err != nil {
+			return err
+		}
 		num = endPayload
 	}
-	return out
+	return nil
 }
 
-func serializeRecord(r record) []byte {
+func (s *Store) serializeRecord(r record) error {
 
 	totalSize := headerSize + len(r.payload)
 	buf := make([]byte, totalSize)
 
-	binary.LittleEndian.PutUint32(buf[0:4], r.checkSum)
-	buf[4] = r.logType
-	binary.LittleEndian.PutUint32(buf[5:9], r.length)
-	copy(buf[9:], r.payload)
+	binary.LittleEndian.PutUint16(buf[0:2], r.recordId)
+	binary.LittleEndian.PutUint32(buf[2:6], r.checkSum)
+	buf[6] = r.logType
+	binary.LittleEndian.PutUint32(buf[7:11], r.length)
+	copy(buf[11:], r.payload)
 
-	return buf
+	if _, err := s.file.Write(buf); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func deserializeHeader(bytes []byte) record {
 
 	return record{
-		checkSum: binary.LittleEndian.Uint32(bytes[0:4]),
-		logType: bytes[4],
-		length: binary.LittleEndian.Uint32(bytes[5:9]),
+		recordId: binary.LittleEndian.Uint16(bytes[0:2]),
+		checkSum: binary.LittleEndian.Uint32(bytes[2:6]),
+		logType: bytes[6],
+		length: binary.LittleEndian.Uint32(bytes[7:11]),
 		payloadStruct: payload{
-			operation: bytes[9],
-			keyLength: binary.LittleEndian.Uint16(bytes[9:11]),
-			valueLength: binary.LittleEndian.Uint32(bytes[11:15]),
+			operation: bytes[11],
+			keyLength: binary.LittleEndian.Uint16(bytes[12:14]),
+			valueLength: binary.LittleEndian.Uint32(bytes[14:18]),
 		},
 	}
 }
@@ -188,7 +207,6 @@ func (fr *FragmentReassembler) Assemble(r record) (record, bool) {
 	return record{}, false
 }
 
-// code below have some bugs 'needs to be fixed'
 func parseRecord(data []byte, r record) record {
 
 	operation := logType(data[0])
@@ -206,14 +224,17 @@ func parseRecord(data []byte, r record) record {
 	vValue := data[0:vLength]
 	data = data[vLength:]
 
+	// planning to have one key per record. (code stays untill i change my mind)
 	for len(data) > 0 {
 		data = data[1:]			// pop operation byte[0]
+		
+		tempKLength := binary.LittleEndian.Uint16(data[0:2])
 		data = data[2:]			// pop key byte[0:2]
 
 		tmpVLength := binary.LittleEndian.Uint32(data[0:4])
 		data = data[4:]
 
-		data = data[kLength:]	// pop key value
+		data = data[tempKLength:]	// pop key value
 
 		vValue = append(vValue, data[0:tmpVLength]...)
 		data = data[tmpVLength:]
